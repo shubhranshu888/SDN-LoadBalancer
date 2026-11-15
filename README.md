@@ -37,10 +37,10 @@ SDN-LoadBalancer/
 
 - Ubuntu 20.04 / 22.04 LTS
 - Mininet & Open vSwitch (`sudo apt install mininet openvswitch-switch`)
-- Python 3.9 (recommended virtual environment for Ryu compatibility)
+- Python 3.9 / 3.10 (virtual environment for Ryu compatibility)
 - Python packages (`pip install -r requirements.txt`):
   - `ryu>=4.34`
-  - `eventlet==0.30.2`
+  - `eventlet==0.30.2` (Python 3.9) or `eventlet==0.33.2` (Python 3.10)
   - `psutil>=5.9.0`
   - `matplotlib>=3.5.0` (optional, for PNG comparison charts)
 
