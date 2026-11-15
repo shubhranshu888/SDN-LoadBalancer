@@ -23,20 +23,61 @@ VIP = "10.0.0.100"
 PORT = 8080
 
 
-def find_ryu_command(explicit_path=None):
+def _python_has_module(py_bin, mod_name):
+    try:
+        res = subprocess.run(
+            [py_bin, "-c", f"import {mod_name}"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+        return res.returncode == 0
+    except Exception:
+        return False
+
+
+def find_ryu_python(explicit_python=None):
+    candidates = []
+    if explicit_python:
+        candidates.append(explicit_python)
+    ryu_mgr = shutil.which("ryu-manager")
+    if ryu_mgr:
+        candidates.append(os.path.join(os.path.dirname(ryu_mgr), "python3"))
+    sudo_user = os.environ.get("SUDO_USER")
+    home_dirs = [os.path.expanduser("~")]
+    if sudo_user:
+        home_dirs.insert(0, os.path.expanduser(f"~{sudo_user}"))
+    for home in home_dirs:
+        for env_name in ("ryu_env", "venv", ".venv", "ryu-env"):
+            candidates.append(os.path.join(home, env_name, "bin", "python3"))
+    candidates.append(sys.executable)
+
+    seen = set()
+    for cand in candidates:
+        if not cand or cand in seen or not os.path.exists(cand):
+            continue
+        seen.add(cand)
+        if _python_has_module(cand, "ryu"):
+            return cand
+    return None
+
+
+def find_ryu_command(explicit_path=None, explicit_python=None):
     if explicit_path and os.path.exists(explicit_path):
-        return [explicit_path]
+        return [explicit_path], explicit_python or sys.executable
     launcher = os.path.join(PROJECT_ROOT, "controller", "launch_ryu.py")
-    if os.path.exists(launcher):
-        return [sys.executable, launcher]
+    ryu_py = find_ryu_python(explicit_python)
+    if ryu_py and os.path.exists(launcher):
+        return [ryu_py, launcher], ryu_py
     sibling = os.path.join(os.path.dirname(sys.executable), "ryu-manager")
     if os.path.exists(sibling):
-        return [sibling]
+        return [sibling], sys.executable
     which_path = shutil.which("ryu-manager")
     if which_path:
-        return [which_path]
+        return [which_path], sys.executable
     raise FileNotFoundError(
-        "Could not locate 'ryu-manager' or 'controller/launch_ryu.py'."
+        "Could not locate a Python environment with 'ryu' installed. "
+        "Pass --ryu-python /path/to/ryu_env/bin/python3."
     )
 
 
@@ -87,7 +128,8 @@ def stop_process(proc):
             pass
 
 
-def start_servers(net, srv1_extra=""):
+def start_servers(net, srv1_extra="", server_python=None):
+    py_bin = server_python or sys.executable
     procs = {}
     server_specs = [
         ("srv1", "10.0.0.1", srv1_extra),
@@ -97,7 +139,7 @@ def start_servers(net, srv1_extra=""):
     for name, ip, extra in server_specs:
         host = net.get(name)
         cmd = (
-            f"{sys.executable} {PROJECT_ROOT}/server/tcp_server.py {name} {ip} "
+            f"{py_bin} {PROJECT_ROOT}/server/tcp_server.py {name} {ip} "
             f"--telemetry-interval 1.0 {extra}"
         )
         procs[name] = host.popen(cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -187,7 +229,7 @@ def run_concurrent_clients(net, tmp_dir, tag, num_reqs_per_client=15, concurrenc
     return aggregate_client_reports(report_paths)
 
 
-def run_single_scenario(ryu_cmd, controller_rel_path, scenario_name, results_dir):
+def run_single_scenario(ryu_cmd, server_python, controller_rel_path, scenario_name, results_dir):
     print(f"\n>>> Running [{scenario_name}] with [{controller_rel_path}]", flush=True)
     cleanup()
     ctrl_log = os.path.join(results_dir, f"{scenario_name}_{os.path.basename(controller_rel_path)}.log")
@@ -209,7 +251,7 @@ def run_single_scenario(ryu_cmd, controller_rel_path, scenario_name, results_dir
         time.sleep(2.0)
 
         srv1_extra = "--base-cpu 92 --base-delay 0.25" if scenario_name == "server_overload" else ""
-        srv_procs = start_servers(net, srv1_extra=srv1_extra)
+        srv_procs = start_servers(net, srv1_extra=srv1_extra, server_python=server_python)
 
         # Allow initial telemetry & ARP warm-up
         time.sleep(3.5)
@@ -307,6 +349,7 @@ def write_markdown_report(results, out_md):
 def main():
     parser = argparse.ArgumentParser(description="Automated Mininet Benchmark: Static vs Adaptive SDN LB")
     parser.add_argument("--ryu-bin", default=None, help="Path to ryu-manager executable")
+    parser.add_argument("--ryu-python", default=None, help="Path to virtualenv python3 containing ryu/psutil")
     parser.add_argument(
         "--scenarios",
         nargs="+",
@@ -321,7 +364,7 @@ def main():
         sys.exit(1)
 
     setLogLevel("warning")
-    ryu_cmd = find_ryu_command(args.ryu_bin)
+    ryu_cmd, ryu_py = find_ryu_command(args.ryu_bin, args.ryu_python)
     results_dir = os.path.join(PROJECT_ROOT, "results")
     os.makedirs(results_dir, exist_ok=True)
 
@@ -334,7 +377,9 @@ def main():
     for scenario in args.scenarios:
         all_results[scenario] = {}
         for label, ctrl_path in controllers:
-            all_results[scenario][label] = run_single_scenario(ryu_cmd, ctrl_path, scenario, results_dir)
+            all_results[scenario][label] = run_single_scenario(
+                ryu_cmd, ryu_py, ctrl_path, scenario, results_dir
+            )
 
     json_path = os.path.join(results_dir, "benchmark_results.json")
     with open(json_path, "w", encoding="utf-8") as fh:
@@ -348,10 +393,10 @@ def main():
     print(f" Markdown Comparison Report: {md_path}")
     print("=" * 70)
 
-    # Attempt optional chart generation
+    # Attempt optional chart generation using ryu_py (which has matplotlib)
     plot_script = os.path.join(PROJECT_ROOT, "evaluation", "plot_results.py")
     if os.path.exists(plot_script):
-        subprocess.run([sys.executable, plot_script, "--input", json_path, "--out-dir", results_dir], check=False)
+        subprocess.run([ryu_py, plot_script, "--input", json_path, "--out-dir", results_dir], check=False)
 
 
 if __name__ == "__main__":

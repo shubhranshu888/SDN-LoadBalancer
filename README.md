@@ -142,6 +142,5 @@ mininet> link s1 srv1 up
 This runs all 4 evaluation scenarios automatically for both `static_lb.py` and `adaptive_controller.py`, and generates `results/benchmark_results.json`, `results/comparison_report.md`, and `results/comparison_charts.png`:
 
 ```bash
-# If using a virtualenv, preserve its python path under sudo:
-sudo -E env "PATH=$PATH" $(which python3) evaluation/run_experiments.py
+sudo python3 evaluation/run_experiments.py
 ```
