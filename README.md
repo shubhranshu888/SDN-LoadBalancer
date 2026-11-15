@@ -44,7 +44,7 @@ SDN-LoadBalancer/
   - `psutil>=5.9.0`
   - `matplotlib>=3.5.0` (optional, for PNG comparison charts)
 
-> **Tip:** Activate your Python 3.9 virtual environment before running `ryu-manager`, or pass `--ryu-bin $(which ryu-manager)` to automated scripts under `sudo`.
+> **Tip:** On Python 3.10+, `ryu 4.34` + `eventlet 0.33.2` drops `ALREADY_HANDLED` from `eventlet.wsgi`. Use `python3 controller/launch_ryu.py <controller.py>` (included in this repo) to launch Ryu cleanly on both Python 3.9 and 3.10.
 
 ---
 
@@ -82,7 +82,7 @@ python3 -m unittest -v tests/test_components.py
 
 **Terminal 1 — Start Static Controller:**
 ```bash
-ryu-manager controller/static_lb.py
+python3 controller/launch_ryu.py controller/static_lb.py
 ```
 
 **Terminal 2 — Start Mininet Topology:**
@@ -104,7 +104,7 @@ Clean up any previous Mininet state first (`sudo mn -c`).
 
 **Terminal 1 — Start Adaptive Controller:**
 ```bash
-ryu-manager controller/adaptive_controller.py
+python3 controller/launch_ryu.py controller/adaptive_controller.py
 ```
 
 **Terminal 2 — Start Mininet Topology:**
@@ -142,6 +142,6 @@ mininet> link s1 srv1 up
 This runs all 4 evaluation scenarios automatically for both `static_lb.py` and `adaptive_controller.py`, and generates `results/benchmark_results.json`, `results/comparison_report.md`, and `results/comparison_charts.png`:
 
 ```bash
-# If using a virtualenv, preserve its python & ryu-manager paths under sudo:
-sudo $(which python3) evaluation/run_experiments.py --ryu-bin $(which ryu-manager)
+# If using a virtualenv, preserve its python path under sudo:
+sudo -E env "PATH=$PATH" $(which python3) evaluation/run_experiments.py
 ```

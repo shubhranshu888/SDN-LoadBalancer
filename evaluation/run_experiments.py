@@ -23,18 +23,20 @@ VIP = "10.0.0.100"
 PORT = 8080
 
 
-def find_ryu_manager(explicit_path=None):
+def find_ryu_command(explicit_path=None):
     if explicit_path and os.path.exists(explicit_path):
-        return explicit_path
+        return [explicit_path]
+    launcher = os.path.join(PROJECT_ROOT, "controller", "launch_ryu.py")
+    if os.path.exists(launcher):
+        return [sys.executable, launcher]
     sibling = os.path.join(os.path.dirname(sys.executable), "ryu-manager")
     if os.path.exists(sibling):
-        return sibling
+        return [sibling]
     which_path = shutil.which("ryu-manager")
     if which_path:
-        return which_path
+        return [which_path]
     raise FileNotFoundError(
-        "Could not locate 'ryu-manager'. Pass --ryu-bin /path/to/ryu-manager "
-        "or run with sudo using your virtualenv python."
+        "Could not locate 'ryu-manager' or 'controller/launch_ryu.py'."
     )
 
 
@@ -53,12 +55,12 @@ def wait_for_port(host, port, timeout=15.0):
     return False
 
 
-def start_controller(ryu_bin, controller_script, log_path):
+def start_controller(ryu_cmd, controller_script, log_path):
     env = os.environ.copy()
     env["SDN_LB_LINK_BW_MBPS"] = "10.0"
     log_fh = open(log_path, "w", encoding="utf-8")
     proc = subprocess.Popen(
-        [ryu_bin, controller_script],
+        list(ryu_cmd) + [controller_script],
         cwd=PROJECT_ROOT,
         stdout=log_fh,
         stderr=subprocess.STDOUT,
@@ -185,11 +187,11 @@ def run_concurrent_clients(net, tmp_dir, tag, num_reqs_per_client=15, concurrenc
     return aggregate_client_reports(report_paths)
 
 
-def run_single_scenario(ryu_bin, controller_rel_path, scenario_name, results_dir):
+def run_single_scenario(ryu_cmd, controller_rel_path, scenario_name, results_dir):
     print(f"\n>>> Running [{scenario_name}] with [{controller_rel_path}]", flush=True)
     cleanup()
     ctrl_log = os.path.join(results_dir, f"{scenario_name}_{os.path.basename(controller_rel_path)}.log")
-    ctrl_proc, ctrl_log_fh = start_controller(ryu_bin, controller_rel_path, ctrl_log)
+    ctrl_proc, ctrl_log_fh = start_controller(ryu_cmd, controller_rel_path, ctrl_log)
 
     topo_kwargs = {"bw_mbps": 10.0, "delay_ms": 1.0}
     if scenario_name == "network_congestion":
@@ -319,7 +321,7 @@ def main():
         sys.exit(1)
 
     setLogLevel("warning")
-    ryu_bin = find_ryu_manager(args.ryu_bin)
+    ryu_cmd = find_ryu_command(args.ryu_bin)
     results_dir = os.path.join(PROJECT_ROOT, "results")
     os.makedirs(results_dir, exist_ok=True)
 
@@ -332,7 +334,7 @@ def main():
     for scenario in args.scenarios:
         all_results[scenario] = {}
         for label, ctrl_path in controllers:
-            all_results[scenario][label] = run_single_scenario(ryu_bin, ctrl_path, scenario, results_dir)
+            all_results[scenario][label] = run_single_scenario(ryu_cmd, ctrl_path, scenario, results_dir)
 
     json_path = os.path.join(results_dir, "benchmark_results.json")
     with open(json_path, "w", encoding="utf-8") as fh:

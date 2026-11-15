@@ -14,6 +14,13 @@ if PROJECT_ROOT not in sys.path:
 def _install_ryu_stubs_if_missing():
     """Allows importing adaptive_controller.py in environments without Ryu installed."""
     try:
+        import eventlet.wsgi
+        if not hasattr(eventlet.wsgi, "ALREADY_HANDLED"):
+            eventlet.wsgi.ALREADY_HANDLED = []
+    except ImportError:
+        pass
+
+    try:
         import ryu  # noqa: F401
         return
     except ImportError:
