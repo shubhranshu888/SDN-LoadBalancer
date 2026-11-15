@@ -25,8 +25,7 @@ SDN-LoadBalancer/
 │   └── test_components.py       # Unit & local socket integration tests (no Mininet/root required)
 ├── docs/
 │   ├── architecture_d1.md       # Phase 1 (D1) system architecture
-│   ├── architecture_d2.md       # Phase 2 (D2) adaptive architecture & scoring design
-│   └── viva_and_demo_guide.md   # Rubric mapping, live demo walkthrough & Viva Q&A
+│   └── architecture_d2.md       # Phase 2 (D2) adaptive architecture & scoring design
 ├── requirements.txt
 └── README.md
 ```

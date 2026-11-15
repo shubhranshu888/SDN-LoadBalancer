@@ -6,7 +6,12 @@ __pycache__/
 venv/
 .venv/
 env/
+.vscode/
+.idea/
+*.swp
+*.swo
 *.log
+*.pcap
 /tmp/
 .DS_Store
 Thumbs.db
