@@ -69,77 +69,135 @@ SDN-LoadBalancer/
 
 ---
 
-## Execution Instructions
+## Execution Instructions (Copy-Paste Ready)
+
+> **Note:** On this Ubuntu VM setup, Ryu & `psutil` live in `~/ryu_env` while Mininet is installed in system `/usr/bin/python3`. Always activate `~/ryu_env` in **Terminal 1 (Controller)** and use plain system `sudo python3` in **Terminal 2 (Mininet)**. If running on a different machine, adjust `~/adaptive_loadbalancer` and the `ryu_env` path to match your local setup.
 
 ### 1. Run Unit & Socket Tests (No Mininet Required)
 
 ```bash
+cd ~/adaptive_loadbalancer
+source ~/ryu_env/bin/activate
 python3 -m unittest -v tests/test_components.py
 ```
 
-### 2. Run Interactive D1 Demo (Static Round-Robin)
+---
 
-**Terminal 1 — Start Static Controller:**
+### 2. D1 Execution — Static Round-Robin Load Balancer
+
+**Terminal 1 — Start Static Controller (`ryu_env`):**
 ```bash
+cd ~/adaptive_loadbalancer
+source ~/ryu_env/bin/activate
 python3 controller/launch_ryu.py controller/static_lb.py
 ```
 
-**Terminal 2 — Start Mininet Topology:**
+**Terminal 2 — Start Mininet Topology (System Python):**
 ```bash
+cd ~/adaptive_loadbalancer
+sudo mn -c
 sudo python3 topology/topology.py
 ```
 
-**Inside `mininet>` prompt — Start Backend Servers & Generate Traffic:**
-```text
-mininet> srv1 python3 server/tcp_server.py srv1 10.0.0.1 &
-mininet> srv2 python3 server/tcp_server.py srv2 10.0.0.2 &
-mininet> srv3 python3 server/tcp_server.py srv3 10.0.0.3 &
-mininet> c1 python3 client/tcp_client.py 10.0.0.100 12 --concurrency 4
+**Inside `mininet>` — Start Backend Servers & Run D1 Traffic Test:**
+```bash
+srv1 /home/shubhranshu-mishra/ryu_env/bin/python3 server/tcp_server.py srv1 10.0.0.1 &
+srv2 /home/shubhranshu-mishra/ryu_env/bin/python3 server/tcp_server.py srv2 10.0.0.2 &
+srv3 /home/shubhranshu-mishra/ryu_env/bin/python3 server/tcp_server.py srv3 10.0.0.3 &
+```
+*(Wait ~2 seconds, then paste:)*
+```bash
+c1 ping -c 2 10.0.0.100
+c1 python3 client/tcp_client.py 10.0.0.100 12 --concurrency 4
 ```
 
-### 3. Run Interactive D2 Demo (Adaptive SDN Load Balancer)
-
-Clean up any previous Mininet state first (`sudo mn -c`).
-
-**Terminal 1 — Start Adaptive Controller:**
+**Cleanup after D1:**
 ```bash
+exit
+```
+Then press `Ctrl+C` in **Terminal 1** to stop `static_lb.py`.
+
+---
+
+### 3. D2 Execution — Adaptive SDN Load Balancer & Challenging Scenarios
+
+**Terminal 1 — Start Adaptive Controller (`ryu_env`):**
+```bash
+cd ~/adaptive_loadbalancer
+source ~/ryu_env/bin/activate
 python3 controller/launch_ryu.py controller/adaptive_controller.py
 ```
 
-**Terminal 2 — Start Mininet Topology:**
+**Terminal 2 — Start Mininet Topology (System Python):**
 ```bash
+cd ~/adaptive_loadbalancer
+sudo mn -c
 sudo python3 topology/topology.py
 ```
 
-**Inside `mininet>` prompt — Start Servers & Test Normal + Challenging Scenarios:**
-```text
-mininet> srv1 python3 server/tcp_server.py srv1 10.0.0.1 &
-mininet> srv2 python3 server/tcp_server.py srv2 10.0.0.2 &
-mininet> srv3 python3 server/tcp_server.py srv3 10.0.0.3 &
+**Inside `mininet>` — Start Backend Servers:**
+```bash
+srv1 /home/shubhranshu-mishra/ryu_env/bin/python3 server/tcp_server.py srv1 10.0.0.1 &
+srv2 /home/shubhranshu-mishra/ryu_env/bin/python3 server/tcp_server.py srv2 10.0.0.2 &
+srv3 /home/shubhranshu-mishra/ryu_env/bin/python3 server/tcp_server.py srv3 10.0.0.3 &
+```
+*(Wait ~3 seconds until Terminal 1 prints `[REGISTERED]` for `srv1`, `srv2`, and `srv3`.)*
 
-# 1. Normal Load Test
-mininet> c1 python3 client/tcp_client.py 10.0.0.100 15 --concurrency 5
-
-# 2. Server Overload Test (stress srv1, then send client burst)
-mininet> c1 curl -s "http://10.0.0.1:8080/stress?cpu=92&delay=0.25"
-mininet> c1 python3 client/tcp_client.py 10.0.0.100 15 --concurrency 5
-mininet> c1 curl -s "http://10.0.0.1:8080/reset"
-
-# 3. Server Failure & Recovery Test
-mininet> srv2 pkill -f tcp_server.py
-mininet> c1 python3 client/tcp_client.py 10.0.0.100 15 --concurrency 5
-mininet> srv2 python3 server/tcp_server.py srv2 10.0.0.2 &
-
-# 4. Link Failure Test (instant OpenFlow PortStatus detection)
-mininet> link s1 srv1 down
-mininet> c1 python3 client/tcp_client.py 10.0.0.100 10 --concurrency 3
-mininet> link s1 srv1 up
+**Test 3A — Normal Load Distribution:**
+```bash
+c1 python3 client/tcp_client.py 10.0.0.100 15 --concurrency 5
 ```
 
-### 4. Run Automated Static vs Adaptive Benchmark Suite
+**Test 3B — Challenging Scenario 1: Server Overload Avoidance (`srv1` stressed):**
+```bash
+c1 curl -s "http://10.0.0.1:8080/stress?cpu=92&delay=0.25"
+```
+*(Wait 2 seconds so Terminal 1 prints `[OVERLOAD DETECTED] srv1`, then paste:)*
+```bash
+c1 python3 client/tcp_client.py 10.0.0.100 15 --concurrency 5
+c1 curl -s "http://10.0.0.1:8080/reset"
+```
 
-This runs all 4 evaluation scenarios automatically for both `static_lb.py` and `adaptive_controller.py`, and generates `results/benchmark_results.json`, `results/comparison_report.md`, and `results/comparison_charts.png`:
+**Test 3C — Challenging Scenario 2: Server Crash & Recovery (`srv2` killed):**
+```bash
+srv2 pkill -f tcp_server.py
+```
+*(Wait 6 seconds so Terminal 1 prints `[FAILURE DETECTED] srv2` and `[Flow Cleanup]`, then paste:)*
+```bash
+c1 python3 client/tcp_client.py 10.0.0.100 15 --concurrency 5
+srv2 /home/shubhranshu-mishra/ryu_env/bin/python3 server/tcp_server.py srv2 10.0.0.2 &
+```
+
+**Test 3D — Challenging Scenario 3: Instant Link Failure & Recovery (`srv1` link down):**
+```bash
+link s1 srv1 down
+c1 python3 client/tcp_client.py 10.0.0.100 10 --concurrency 3
+link s1 srv1 up
+```
+
+**Cleanup after D2:**
+```bash
+exit
+```
+Then press `Ctrl+C` in **Terminal 1** to stop `adaptive_controller.py`.
+
+---
+
+### 4. Automated Static vs. Adaptive Comparison Benchmark
+
+Make sure Mininet and any running Ryu controller are stopped first, then run in a single terminal:
 
 ```bash
+cd ~/adaptive_loadbalancer
+sudo mn -c
 sudo python3 evaluation/run_experiments.py
 ```
+
+View the generated report and output artifacts:
+
+```bash
+cat results/comparison_report.md
+ls -l results/
+```
+
+This runs all 4 scenarios (`normal_load`, `server_overload`, `network_congestion`, `server_failure`) for both `static_lb.py` and `adaptive_controller.py`, and writes `results/benchmark_results.json`, `results/comparison_report.md`, and `results/comparison_charts.png`.
