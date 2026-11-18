@@ -47,6 +47,10 @@ SDN-LoadBalancer/
 
 ---
 
+## Topology Diagram
+
+<img width="911" height="657" alt="image" src="https://github.com/user-attachments/assets/6d7f1627-b644-4b9e-b6e8-36b52ff1cc1b" />
+
 ## Key Features Implemented
 
 1. **Multiple Concurrent TCP Servers (`server/tcp_server.py`)**:
